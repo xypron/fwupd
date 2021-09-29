@@ -20,7 +20,6 @@
 /* Payload size limited to 8k for both interfaces */
 #define UPD_PACKET_HEADER_SIZE	      (2 * sizeof(guint32))
 #define SYNC_PACKET_HEADER_SIZE	      (3 * sizeof(guint32))
-#define WRITE_TIME_OUT		      100
 #define HASH_TIMEOUT		      30000
 #define MAX_DATA_SIZE		      8192 /* 8k */
 #define PAYLOAD_SIZE		      MAX_DATA_SIZE - UPD_PACKET_HEADER_SIZE
@@ -31,6 +30,7 @@
 #define LENGTH_OFFSET		      0x4
 #define COMMAND_OFFSET		      0x0
 #define SYNC_ACK_PAYLOAD_LENGTH	      5
+#define MAX_RETRIES		      5
 
 enum { SHA_256, SHA_512, MD5 };
 
@@ -165,7 +165,7 @@ fu_logitech_bulkcontroller_device_send(FuLogitechBulkcontrollerDevice *self,
 					(guint8 *)buf->data,
 					buf->len,
 					&transferred,
-					WRITE_TIME_OUT,
+					BULK_TRANSFER_TIMEOUT,
 					cancellable,
 					error)) {
 		g_prefix_error(error, "bulk transfer failed: ");
@@ -570,6 +570,7 @@ fu_logitech_bulkcontroller_device_write_firmware(FuDevice *device,
 						 GError **error)
 {
 	FuLogitechBulkcontrollerDevice *self = FU_LOGITECH_BULKCONTROLLER_DEVICE(device);
+	guint init_retry = MAX_RETRIES;
 	g_autofree gchar *base64hash = NULL;
 	g_autoptr(GByteArray) end_pkt = g_byte_array_new();
 	g_autoptr(GByteArray) start_pkt = g_byte_array_new();
@@ -588,9 +589,19 @@ fu_logitech_bulkcontroller_device_write_firmware(FuDevice *device,
 	if (fw == NULL)
 		return FALSE;
 
-	/* Sending INIT */
-	if (!fu_logitech_bulkcontroller_device_send_upd_cmd(self, CMD_INIT, NULL, error)) {
-		g_prefix_error(error, "error in writing init transfer packet: ");
+	/* Sending INIT. Retry if device is not in IDLE state to receive the file */
+	do {
+		if (!fu_logitech_bulkcontroller_device_send_upd_cmd(self, CMD_INIT, NULL, error)) {
+			g_prefix_error(error,
+				       "error in writing init transfer packet: retrying... ");
+			continue;
+		}
+		break;
+	} while (--init_retry);
+	/* Return if maximum retires are done. Restart the device.*/
+	if (!init_retry) {
+		g_prefix_error(error,
+			       "error in writing init transfer packet: Please reboot the device ");
 		return FALSE;
 	}
 

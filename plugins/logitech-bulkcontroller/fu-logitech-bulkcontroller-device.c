@@ -234,7 +234,7 @@ fu_logitech_bulkcontroller_device_send_upd_cmd(FuLogitechBulkcontrollerDevice *s
 	/* receiving INIT ACK */
 	fu_byte_array_set_size(buf_ack, MAX_DATA_SIZE);
 
-	/* Extending the bulk transfer timeout value, as android device takes some time to
+	/* extending the bulk transfer timeout value, as android device takes some time to
 	   calculate Hash and respond */
 	if (CMD_END_TRANSFER == cmd)
 		timeout = HASH_TIMEOUT;
@@ -441,7 +441,7 @@ fu_logitech_bulkcontroller_device_json_parser(FuDevice *device,
 					(const gchar *)decoded_pkt->data,
 					decoded_pkt->len,
 					error)) {
-		g_prefix_error(error, "error in parsing json data: ");
+		g_prefix_error(error, "failed to parse json data: ");
 		return FALSE;
 	}
 	json_root = json_parser_get_root(json_parser);
@@ -509,23 +509,24 @@ fu_logitech_bulkcontroller_device_get_data(FuDevice *device, GError **error)
 							     device_request,
 							     error)) {
 		g_prefix_error(error,
-			       "error in sending buffer write packet for device info request: ");
+			       "failed to send write buffer packet for device info request: ");
 		return FALSE;
 	}
 
-	/* wait for the TransitionToDeviceModeResponse */
+	/* wait for the GetDeviceInfoResponse */
 	if (!fu_logitech_bulkcontroller_device_recv_sync_cmd(self,
 							     CMD_BUFFER_READ,
 							     device_response,
 							     error)) {
-		g_prefix_error(error, "error in buffer read packet for device info request: ");
+		g_prefix_error(error, "failed to read buffer packet for device info request: ");
 		return FALSE;
 	}
 	if (!fu_logitech_bulkcontroller_device_recv_sync_cmd(self,
 							     CMD_UNINIT_BUFFER,
 							     NULL,
 							     error)) {
-		g_prefix_error(error, "error in buffer read packet for device info request: ");
+		g_prefix_error(error,
+			       "failed to read uninit buffer packet for device info request: ");
 		return FALSE;
 	}
 	if (!fu_logitech_bulkcontroller_device_send_sync_cmd(self,
@@ -534,7 +535,7 @@ fu_logitech_bulkcontroller_device_get_data(FuDevice *device, GError **error)
 							     error)) {
 		g_prefix_error(
 		    error,
-		    "error in sending buffer uninitialize packet for device info request: ");
+		    "failed to send buffer uninitialize packet for device info request: ");
 		return FALSE;
 	}
 	decoded_pkt = proto_manager_decode_message(device_response->data,
@@ -542,12 +543,14 @@ fu_logitech_bulkcontroller_device_get_data(FuDevice *device, GError **error)
 						   &proto_id,
 						   error);
 	if (decoded_pkt == NULL) {
-		g_prefix_error(error, "error in unpacking packet for device info request: ");
+		g_prefix_error(error, "failed to unpack packet for device info request: ");
 		return FALSE;
 	}
-	g_debug("Received device response. data: %s, length: %u",
-		(const gchar *)decoded_pkt->data,
-		decoded_pkt->len);
+	if (g_getenv("FWUPD_LOGITECH_BULKCONTROLLER_VERBOSE") != NULL) {
+		g_autofree gchar *strsafe =
+		    fu_common_strsafe((const gchar *)decoded_pkt->data, decoded_pkt->len);
+		g_debug("Received device response: %s", strsafe);
+	}
 	if (proto_id != kProtoId_GetDeviceInfoResponse) {
 		g_set_error_literal(error,
 				    G_IO_ERROR,
@@ -560,6 +563,15 @@ fu_logitech_bulkcontroller_device_get_data(FuDevice *device, GError **error)
 
 	/* success */
 	return TRUE;
+}
+
+static gboolean
+fu_logitech_bulkcontroller_device_send_upd_init_cmd_cb(FuDevice *device,
+						       gpointer user_data,
+						       GError **error)
+{
+	FuLogitechBulkcontrollerDevice *self = FU_LOGITECH_BULKCONTROLLER_DEVICE(device);
+	return fu_logitech_bulkcontroller_device_send_upd_cmd(self, CMD_INIT, NULL, error);
 }
 
 static gboolean
@@ -589,19 +601,14 @@ fu_logitech_bulkcontroller_device_write_firmware(FuDevice *device,
 	if (fw == NULL)
 		return FALSE;
 
-	/* Sending INIT. Retry if device is not in IDLE state to receive the file */
-	do {
-		if (!fu_logitech_bulkcontroller_device_send_upd_cmd(self, CMD_INIT, NULL, error)) {
-			g_prefix_error(error,
-				       "error in writing init transfer packet: retrying... ");
-			continue;
-		}
-		break;
-	} while (--init_retry);
-	/* Return if maximum retires are done. Restart the device.*/
-	if (!init_retry) {
+	/* sending INIT. Retry if device is not in IDLE state to receive the file */
+	if (!fu_device_retry(device,
+			     fu_logitech_bulkcontroller_device_send_upd_init_cmd_cb,
+			     MAX_RETRIES,
+			     NULL,
+			     error)) {
 		g_prefix_error(error,
-			       "error in writing init transfer packet: Please reboot the device ");
+			       "failed to write init transfer packet: please reboot the device: ");
 		return FALSE;
 	}
 
@@ -611,7 +618,7 @@ fu_logitech_bulkcontroller_device_write_firmware(FuDevice *device,
 							    CMD_START_TRANSFER,
 							    start_pkt,
 							    error)) {
-		g_prefix_error(error, "error in writing start transfer packet: ");
+		g_prefix_error(error, "failed to write start transfer packet: ");
 		return FALSE;
 	}
 	fu_progress_step_done(progress);
@@ -645,13 +652,13 @@ fu_logitech_bulkcontroller_device_write_firmware(FuDevice *device,
 							    CMD_END_TRANSFER,
 							    end_pkt,
 							    error)) {
-		g_prefix_error(error, "error in writing end transfer transfer packet: ");
+		g_prefix_error(error, "failed to write end transfer transfer packet: ");
 		return FALSE;
 	}
 
 	/* send uninit */
 	if (!fu_logitech_bulkcontroller_device_send_upd_cmd(self, CMD_UNINIT, NULL, error)) {
-		g_prefix_error(error, "error in writing finish transfer packet: ");
+		g_prefix_error(error, "failed to write finish transfer packet: ");
 		return FALSE;
 	}
 	fu_progress_step_done(progress);
@@ -726,14 +733,13 @@ fu_logitech_bulkcontroller_device_setup(FuDevice *device, GError **error)
 	FuLogitechBulkcontrollerProtoId proto_id = kProtoId_UnknownId;
 	guint32 success = 0;
 	guint32 error_code = 0;
-	GError *error_local = NULL;
 
 	/* FuUsbDevice->setup */
 	if (!FU_DEVICE_CLASS(fu_logitech_bulkcontroller_device_parent_class)->setup(device, error))
 		return FALSE;
 
 	/*
-	 * Device supports USB_Device mode, Appliance mode and BYOD mode.
+	 * device supports USB_Device mode, Appliance mode and BYOD mode.
 	 * Only USB_Device mode is supported here.
 	 * Ensure it is running in USB_Device mode
 	 * Response has two data: Request succeeded or failed, and error code in case of failure
@@ -743,9 +749,8 @@ fu_logitech_bulkcontroller_device_setup(FuDevice *device, GError **error)
 							     CMD_BUFFER_WRITE,
 							     device_request,
 							     error)) {
-		g_prefix_error(
-		    error,
-		    "error in sending buffer write packet for transition mode request: ");
+		g_prefix_error(error,
+			       "failed to send buffer write packet for transition mode request: ");
 		return FALSE;
 	}
 
@@ -754,7 +759,7 @@ fu_logitech_bulkcontroller_device_setup(FuDevice *device, GError **error)
 							     CMD_BUFFER_READ,
 							     device_response,
 							     error)) {
-		g_prefix_error(error, "error in buffer read packet for transition mode request: ");
+		g_prefix_error(error, "failed to read buffer packet for transition mode request: ");
 		return FALSE;
 	}
 
@@ -762,7 +767,8 @@ fu_logitech_bulkcontroller_device_setup(FuDevice *device, GError **error)
 							     CMD_UNINIT_BUFFER,
 							     NULL,
 							     error)) {
-		g_prefix_error(error, "error in buffer read packet for transition mode request: ");
+		g_prefix_error(error,
+			       "failed to read uninit buffer packet for transition mode request: ");
 		return FALSE;
 	}
 	if (!fu_logitech_bulkcontroller_device_send_sync_cmd(self,
@@ -771,7 +777,7 @@ fu_logitech_bulkcontroller_device_setup(FuDevice *device, GError **error)
 							     error)) {
 		g_prefix_error(
 		    error,
-		    "error in sending buffer uninitialize packet for transition mode request: ");
+		    "failed to send buffer uninitialize packet for transition mode request: ");
 		return FALSE;
 	}
 	decoded_pkt = proto_manager_decode_message(device_response->data,
@@ -779,7 +785,7 @@ fu_logitech_bulkcontroller_device_setup(FuDevice *device, GError **error)
 						   &proto_id,
 						   error);
 	if (decoded_pkt == NULL) {
-		g_prefix_error(error, "error in unpacking packet for transition mode request: ");
+		g_prefix_error(error, "failed to unpack packet for transition mode request: ");
 		return FALSE;
 	}
 	if (proto_id != kProtoId_TransitionToDeviceModeResponse) {
@@ -794,27 +800,29 @@ fu_logitech_bulkcontroller_device_setup(FuDevice *device, GError **error)
 					COMMAND_OFFSET,
 					&success,
 					G_LITTLE_ENDIAN,
-					&error_local)) {
-		g_prefix_error(error, "failed to retrieve result for transition mode request: ");
+					error))
 		return FALSE;
-	}
 	if (!fu_common_read_uint32_safe(decoded_pkt->data,
 					decoded_pkt->len,
 					LENGTH_OFFSET,
 					&error_code,
 					G_LITTLE_ENDIAN,
-					&error_local)) {
-		g_prefix_error(error,
-			       "failed to retrieve error code for transition mode request: ");
+					error))
 		return FALSE;
-	}
-	g_debug("Received transition mode response. Success: %u, Error: %u", success, error_code);
+	if (g_getenv("FWUPD_LOGITECH_BULKCONTROLLER_VERBOSE") != NULL)
+		g_debug("Received transition mode response. Success: %u, Error: %u",
+			success,
+			error_code);
 	if (!success) {
-		g_prefix_error(error, "transition mode request failed. error: %u", error_code);
+		g_set_error(error,
+			    G_IO_ERROR,
+			    G_IO_ERROR_FAILED,
+			    "transition mode request failed. error: %u",
+			    error_code);
 		return FALSE;
 	}
 
-	/* Load current device data */
+	/* load current device data */
 	if (!fu_logitech_bulkcontroller_device_get_data(device, error))
 		return FALSE;
 
@@ -839,6 +847,7 @@ fu_logitech_bulkcontroller_device_init(FuLogitechBulkcontrollerDevice *self)
 	fu_device_add_protocol(FU_DEVICE(self), "com.logitech.vc.proto");
 	fu_device_set_version_format(FU_DEVICE(self), FWUPD_VERSION_FORMAT_TRIPLET);
 	fu_device_add_flag(FU_DEVICE(self), FWUPD_DEVICE_FLAG_UPDATABLE);
+	fu_device_retry_set_delay(FU_DEVICE(self), 1000);
 }
 
 static void

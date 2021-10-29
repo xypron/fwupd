@@ -48,6 +48,7 @@ fu_redfish_plugin_update_password(FuPlugin *plugin, GError **error)
 	locker = fu_device_locker_new(device, error);
 	if (locker == NULL)
 		return FALSE;
+	data->user_id = 0x02;
 	if (!fu_ipmi_device_set_user_password(device, data->user_id, password_new, error))
 		return FALSE;
 

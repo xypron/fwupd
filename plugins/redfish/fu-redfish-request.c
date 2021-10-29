@@ -209,6 +209,17 @@ fu_redfish_request_perform(FuRedfishRequest *self,
 		return FALSE;
 	}
 
+	/* this is XCC being unhelpful when the password has expired */
+	if (g_strstr_len((const gchar *)self->buf->data,
+			 self->buf->len,
+			 "password provided for this account must be changed") != NULL) {
+		g_set_error_literal(error,
+				    FWUPD_ERROR,
+				    FWUPD_ERROR_AUTH_FAILED,
+				    "user account password expired");
+		return FALSE;
+	}
+
 	/* load JSON */
 	if (flags & FU_REDFISH_REQUEST_PERFORM_FLAG_LOAD_JSON) {
 		if (!fu_redfish_request_load_json(self, self->buf, error)) {

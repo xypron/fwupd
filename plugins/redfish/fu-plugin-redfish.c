@@ -41,20 +41,14 @@ fu_redfish_plugin_update_password(FuPlugin *plugin, GError **error)
 {
 	FuPluginData *data = fu_plugin_get_data(plugin);
 	g_autofree gchar *password_new = fu_common_generate_password(15);
-	g_autofree gchar *uri = NULL;
-	g_autoptr(FuRedfishRequest) request = fu_redfish_backend_request_new(data->backend);
-	g_autoptr(JsonBuilder) builder = json_builder_new();
+	g_autoptr(FuDeviceLocker) locker = NULL;
+	g_autoptr(FuIpmiDevice) device = fu_ipmi_device_new(fu_plugin_get_context(plugin));
 
-	uri = g_strdup_printf("/redfish/v1/AccountService/Accounts/%u", (guint)data->user_id - 1);
-	json_builder_begin_object(builder);
-	json_builder_set_member_name(builder, "Password");
-	json_builder_add_string_value(builder, password_new);
-	json_builder_end_object(builder);
-	if (!fu_redfish_request_patch(request,
-				      uri,
-				      builder,
-				      FU_REDFISH_REQUEST_PERFORM_FLAG_LOAD_JSON,
-				      error))
+	/* use IPMI */
+	locker = fu_device_locker_new(device, error);
+	if (locker == NULL)
+		return FALSE;
+	if (!fu_ipmi_device_set_user_password(device, data->user_id, password_new, error))
 		return FALSE;
 
 	/* success */

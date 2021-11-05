@@ -1,0 +1,8 @@
+# FIXME, not my ThinkPad!
+[536c0c4c-e739-5bc7-8f93-042c73d961ef]
+Plugin = mtd_recovery
+
+[MTD\VEN_LENOVO&DEV_20TJS2F44A]
+#MtdRecoveryGpioNumber = 123
+MtdRecoveryKernelDriver = npcm-fiu
+MtdRecoveryBindId = 10000000.spi

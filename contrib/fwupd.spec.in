@@ -447,6 +447,7 @@ done
 %{_libdir}/fwupd-plugins-%{fwupdplugin_version}/libfu_plugin_msr.so
 %endif
 %{_libdir}/fwupd-plugins-%{fwupdplugin_version}/libfu_plugin_mtd.so
+%{_libdir}/fwupd-plugins-%{fwupdplugin_version}/libfu_plugin_mtd_recovery.so
 %{_libdir}/fwupd-plugins-%{fwupdplugin_version}/libfu_plugin_nitrokey.so
 %{_libdir}/fwupd-plugins-%{fwupdplugin_version}/libfu_plugin_nordic_hid.so
 %{_libdir}/fwupd-plugins-%{fwupdplugin_version}/libfu_plugin_nvme.so

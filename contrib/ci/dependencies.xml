@@ -187,6 +187,17 @@
       <package variant="x86_64" />
     </distro>
   </dependency>
+  <dependency type="build" id="liblzma-dev">
+    <distro id="debian">
+      <control />
+      <package variant="x86_64" />
+      <package variant="i386" />
+    </distro>
+    <distro id="ubuntu">
+      <control />
+      <package variant="x86_64" />
+    </distro>
+  </dependency>
   <dependency type="build" id="libpci-dev">
     <distro id="arch">
       <package>pciutils</package>

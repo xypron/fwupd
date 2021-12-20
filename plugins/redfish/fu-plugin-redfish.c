@@ -272,6 +272,8 @@ fu_redfish_plugin_ipmi_create_user(FuPlugin *plugin, GError **error)
 	fu_redfish_backend_set_password(data->backend, password_new);
 
 	/* success */
+	if (!fu_plugin_set_secure_config_value(plugin, "AccountUri", uri, error))
+		return FALSE;
 	if (!fu_plugin_set_secure_config_value(plugin, "Username", username_fwupd, error))
 		return FALSE;
 	if (!fu_plugin_set_secure_config_value(plugin, "Password", password_new, error))
@@ -282,6 +284,41 @@ fu_redfish_plugin_ipmi_create_user(FuPlugin *plugin, GError **error)
 #endif
 
 static gboolean
+fu_plugin_redfish_change_expired(FuPlugin *plugin, GError **error)
+{
+	FuPluginData *data = fu_plugin_get_data(plugin);
+	g_autofree gchar *password_new = fu_common_generate_password(15);
+	g_autofree gchar *uri = NULL;
+	g_autoptr(FuRedfishRequest) request = NULL;
+	g_autoptr(JsonBuilder) builder = json_builder_new();
+
+	/* select correct, falling back to default for old fwupd versions */
+	uri = fu_plugin_get_config_value(plugin, "AccountUri");
+	if (uri == NULL) {
+		uri = g_strdup("/redfish/v1/AccountService/Accounts/2");
+		if (!fu_plugin_set_secure_config_value(plugin, "AccountUri", uri, error))
+			return FALSE;
+	}
+
+	/* now use Redfish to change the temporary password to the actual password */
+	request = fu_redfish_backend_request_new(data->backend);
+	json_builder_begin_object(builder);
+	json_builder_set_member_name(builder, "Password");
+	json_builder_add_string_value(builder, password_new);
+	json_builder_end_object(builder);
+	if (!fu_redfish_request_patch(request,
+				      uri,
+				      builder,
+				      FU_REDFISH_REQUEST_PERFORM_FLAG_LOAD_JSON,
+				      error))
+		return FALSE;
+	fu_redfish_backend_set_password(data->backend, password_new);
+
+	/* success */
+	return fu_plugin_set_secure_config_value(plugin, "Password", password_new, error);
+}
+
+static gboolean
 fu_plugin_redfish_startup(FuPlugin *plugin, GError **error)
 {
 	FuPluginData *data = fu_plugin_get_data(plugin);
@@ -290,6 +327,7 @@ fu_plugin_redfish_startup(FuPlugin *plugin, GError **error)
 	g_autofree gchar *redfish_uri = NULL;
 	g_autofree gchar *username = NULL;
 	g_autoptr(GError) error_uefi = NULL;
+	g_autoptr(GError) error_backend = NULL;
 
 	/* optional */
 	if (!fu_redfish_plugin_discover_smbios_table(plugin, error))
@@ -360,7 +398,19 @@ fu_plugin_redfish_startup(FuPlugin *plugin, GError **error)
 	}
 #endif
 
-	return fu_backend_setup(FU_BACKEND(data->backend), error);
+	/* did the user password expire? */
+	if (!fu_backend_setup(FU_BACKEND(data->backend), &error_backend)) {
+		if (!g_error_matches(error_backend, FWUPD_ERROR, FWUPD_ERROR_INVALID_FILE)) {
+			g_propagate_error(error, g_steal_pointer(&error_backend));
+			return FALSE;
+		}
+		if (!fu_plugin_redfish_change_expired(plugin, error))
+			return FALSE;
+		return fu_backend_setup(FU_BACKEND(data->backend), error);
+	}
+
+	/* success */
+	return TRUE;
 }
 
 static void

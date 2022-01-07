@@ -19,6 +19,7 @@
 
 #define SETUP_RETRY_CNT			  5
 #define MAX_BLOCK_XFER_RETRIES		  10
+#define XFER_RETRY_DELAY		  100 /* ms */
 #define FLUSH_TIMEOUT_MS		  10
 #define BULK_SEND_TIMEOUT_MS		  2000
 #define BULK_RECV_TIMEOUT_MS		  5000
@@ -288,7 +289,12 @@ static gboolean
 fu_cros_ec_usb_device_recovery(FuDevice *device, GError **error)
 {
 	/* flush all data from endpoint to recover in case of error */
-	if (!fu_device_retry(device, fu_cros_ec_usb_device_flush, SETUP_RETRY_CNT, NULL, error)) {
+	if (!fu_device_retry_full(device,
+				  fu_cros_ec_usb_device_flush,
+				  SETUP_RETRY_CNT,
+				  XFER_RETRY_DELAY,
+				  NULL,
+				  error)) {
 		g_prefix_error(error, "failed to flush device to idle state: ");
 		return FALSE;
 	}
@@ -397,11 +403,12 @@ fu_cros_ec_usb_device_setup(FuDevice *device, GError **error)
 		return FALSE;
 
 	/* send start request */
-	if (!fu_device_retry(device,
-			     fu_cros_ec_usb_device_start_request,
-			     SETUP_RETRY_CNT,
-			     &start_resp,
-			     error)) {
+	if (!fu_device_retry_full(device,
+				  fu_cros_ec_usb_device_start_request,
+				  SETUP_RETRY_CNT,
+				  XFER_RETRY_DELAY,
+				  &start_resp,
+				  error)) {
 		g_prefix_error(error, "failed to send start request: ");
 		return FALSE;
 	}
@@ -640,11 +647,12 @@ fu_cros_ec_usb_device_transfer_section(FuDevice *device,
 		    .block = g_ptr_array_index(blocks, i),
 		    .progress = fu_progress_get_child(progress),
 		};
-		if (!fu_device_retry(device,
-				     fu_cros_ec_usb_device_transfer_block,
-				     MAX_BLOCK_XFER_RETRIES,
-				     &helper,
-				     error)) {
+		if (!fu_device_retry_full(device,
+					  fu_cros_ec_usb_device_transfer_block,
+					  MAX_BLOCK_XFER_RETRIES,
+					  XFER_RETRY_DELAY,
+					  &helper,
+					  error)) {
 			g_prefix_error(error, "failed to transfer block 0x%x: ", i);
 			return FALSE;
 		}
@@ -809,11 +817,12 @@ fu_cros_ec_usb_device_write_firmware(FuDevice *device,
 		}
 
 		/* send start request */
-		if (!fu_device_retry(device,
-				     fu_cros_ec_usb_device_start_request,
-				     SETUP_RETRY_CNT,
-				     &start_resp,
-				     error)) {
+		if (!fu_device_retry_full(device,
+					  fu_cros_ec_usb_device_start_request,
+					  SETUP_RETRY_CNT,
+					  XFER_RETRY_DELAY,
+					  &start_resp,
+					  error)) {
 			g_prefix_error(error, "failed to send start request: ");
 			return FALSE;
 		}

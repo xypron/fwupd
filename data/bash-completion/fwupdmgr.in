@@ -77,11 +77,8 @@ _show_modifiers()
 _show_device_ids()
 {
 	local description
-	OLDIFS=$IFS
-	IFS=$'\n'
-	description="$(command fwupdagent get-devices 2>/dev/null | sed -e 's,"Name" :,,; s,",,g; s,\,,,g; s,[[:space:]]\+,,' | command awk '!/DeviceId/ { line = $0 }; /DeviceId/ { print $3 " { "line" }"}')"
+	description="$(command fwupdmgr get-devices 2>/dev/null | grep 'Device ID' | rev | cut -d' ' -f 1 | rev)"
 	COMPREPLY+=( $(compgen -W "${description}" -- "$cur") )
-	IFS=$OLDIFS
 }
 
 _show_remotes()
@@ -107,7 +104,7 @@ _fwupdmgr()
 	esac
 
 	case $command in
-	activate|clear-results|downgrade|get-releases|get-results|unlock|verify|verify-update|get-updates|switch-branch)
+	activate|clear-results|downgrade|get-releases|get-results|unlock|verify|verify-update|get-updates|switch-branch|update|upgrade)
 		if [[ "$prev" = "$command" ]]; then
 			_show_device_ids
 		else

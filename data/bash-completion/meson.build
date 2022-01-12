@@ -4,9 +4,8 @@ if bashcomp.found()
   )
 
 # replace @libexecdir@
-fwupdtool_path = join_paths(libexecdir, 'fwupd')
 con2 = configuration_data()
-con2.set('libexecdir', fwupdtool_path)
+con2.set('libexecdir', bindir)
 configure_file(
   input : 'fwupdtool.in',
   output : 'fwupdtool',

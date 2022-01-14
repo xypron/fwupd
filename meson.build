@@ -423,6 +423,8 @@ if build_standalone and get_option('plugin_uefi_capsule')
           EFI_MACHINE_TYPE_NAME = 'arm'
   elif host_cpu == 'aarch64'
           EFI_MACHINE_TYPE_NAME = 'aa64'
+  elif host_cpu == 'riscv64'
+          EFI_MACHINE_TYPE_NAME = 'riscv64'
   else
           EFI_MACHINE_TYPE_NAME = ''
   endif

@@ -26,6 +26,10 @@ fu_uefi_bootmgr_get_suffix(GError **error)
 		{64, "x64"},
 #elif defined(__aarch64__)
 		{64, "aa64"},
+#elif defined(__riscv) && __riscv_xlen == 32
+		{32, "riscv32"},
+#elif defined(__riscv) && __riscv_xlen == 64
+		{64, "riscv64"},
 #endif
 #if defined(__x86_64__) || defined(__i386__) || defined(__i686__)
 		{32, "ia32"},
